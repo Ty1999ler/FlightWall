@@ -52,9 +52,9 @@ One-time setup:
    sudo mkdir -p /volume1/docker/flightwall/data
    sudo chown 1000 /volume1/docker/flightwall/data
    ```
-   Then copy in `docker-compose.yml` (edit `GITHUB_USER/REPO` to the real
-   image path, lowercase) and `.env` (from `.env.example`, with the tunnel
-   token).
+   Then copy in `docker-compose.yml` (already pointing at
+   `ghcr.io/ty1999ler/flightwall`) and, if using the Cloudflare tunnel,
+   `.env` (from `.env.example`, with the tunnel token).
 3. **Pull access**: the NAS `docker login ghcr.io` from the family-hub setup
    already covers pulling this private image.
 4. **Start it**: from that folder, `sudo docker-compose up -d`.

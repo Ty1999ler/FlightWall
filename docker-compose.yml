@@ -2,10 +2,9 @@
 # over SSH), same pattern as family-hub.
 #
 # One-time setup on the NAS — see README.md for the full walkthrough:
-#   1. Replace GITHUB_USER/REPO below with your GitHub repo (lowercase).
-#   2. Copy .env.example to .env next to this file and paste in the
-#      Cloudflare tunnel token.
-#   3. The existing family-hub Watchtower already watches labeled containers,
+#   1. Copy .env.example to .env next to this file and paste in the
+#      Cloudflare tunnel token (only needed for remote HTTPS access).
+#   2. The existing family-hub Watchtower already watches labeled containers,
 #      so updates deploy automatically ~5 minutes after a push to main.
 #
 # config.json lives in ./data on the NAS (bind mount), so the saved home
@@ -13,7 +12,7 @@
 
 services:
   flightwall:
-    image: ghcr.io/GITHUB_USER/REPO:latest
+    image: ghcr.io/ty1999ler/flightwall:latest
     container_name: flightwall
     ports:
       - "8484:8000"   # http://NAS-IP:8484 on the LAN

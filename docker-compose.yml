@@ -26,6 +26,23 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
+  # Auto-deploys new images pushed by GitHub Actions. If another Watchtower
+  # already runs on this NAS (e.g. family-hub's), don't start a second one —
+  # bring up just the app with: sudo docker-compose up -d flightwall
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: flightwall-watchtower
+    environment:
+      - DOCKER_CONFIG=/config
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the directory, not config.json itself: `docker login` replaces
+      # the file (new inode), and a single-file bind mount would keep serving
+      # the old, expired credentials to Watchtower forever.
+      - /root/.docker:/config:ro
+    command: --label-enable --cleanup --interval 300
+    restart: unless-stopped
+
   # Optional: only needed if no cloudflared tunnel runs on the NAS already.
   # A plain `docker-compose up -d` skips this service; start it with
   # `docker-compose --profile tunnel up -d` (requires TUNNEL_TOKEN in .env).

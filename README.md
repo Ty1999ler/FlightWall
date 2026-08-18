@@ -55,8 +55,14 @@ One-time setup:
    Then copy in `docker-compose.yml` (already pointing at
    `ghcr.io/ty1999ler/flightwall`) and, if using the Cloudflare tunnel,
    `.env` (from `.env.example`, with the tunnel token).
-3. **Pull access**: the NAS `docker login ghcr.io` from the family-hub setup
-   already covers pulling this private image.
+3. **Pull access**: the image on ghcr.io is private, so the NAS needs a
+   one-time login. Create a classic personal access token with ONLY the
+   `read:packages` scope (github.com → Settings → Developer settings →
+   Personal access tokens → Tokens (classic)), then on the NAS run
+   `sudo docker login ghcr.io -u Ty1999ler` and paste the token as the
+   password. Skip this if the NAS already pulls private ghcr images
+   (e.g. family-hub). Note: when the token expires, Watchtower's pulls
+   silently stop — pick the expiry accordingly.
 4. **Start it**: from that folder, `sudo docker-compose up -d`.
    LAN URL: `http://NAS-IP:8484`. Health check: `/healthz`.
 5. **Update the server map**: claim port 8484 and add the two containers to

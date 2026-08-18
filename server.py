@@ -152,9 +152,14 @@ def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return (math.degrees(math.atan2(y, x)) + 360) % 360
 
 
-def route_is_plausible(route: dict, ac_lat: float, ac_lon: float) -> bool:
+def route_is_plausible(route: dict, ac_lat: float, ac_lon: float,
+                       alt_ft: float | None = None,
+                       vert_rate: float | None = None) -> bool:
     """A stale adsbdb route puts the plane nowhere near the O->D great circle.
-    Accept the route only if the detour through the aircraft is small."""
+    Accept the route only if the detour through the aircraft is small AND,
+    for a low (terminal-phase) aircraft, it is near the matching end of the
+    route — position alone can't catch a wrong destination that lies past a
+    city on the same great circle (e.g. 'FCO->YYZ' while landing at YUL)."""
     o, d = route.get("origin") or {}, route.get("destination") or {}
     try:
         o_lat, o_lon = float(o["latitude"]), float(o["longitude"])
@@ -163,9 +168,21 @@ def route_is_plausible(route: dict, ac_lat: float, ac_lon: float) -> bool:
         return True  # can't judge; give benefit of the doubt
     if o.get("iata_code") and o.get("iata_code") == d.get("iata_code"):
         return False
+    d_from_origin = haversine_nm(o_lat, o_lon, ac_lat, ac_lon)
+    d_to_dest = haversine_nm(ac_lat, ac_lon, d_lat, d_lon)
+    # below 5000 ft an aircraft is taking off or landing, so it must be within
+    # ~60 nm of the route end that matches its vertical motion
+    if isinstance(alt_ft, (int, float)) and alt_ft < 5000:
+        climbing = (vert_rate or 0) > 300
+        descending = (vert_rate or 0) < -300
+        if descending and d_to_dest > 60:
+            return False
+        if climbing and d_from_origin > 60:
+            return False
+        if not climbing and not descending and min(d_from_origin, d_to_dest) > 60:
+            return False
     od = haversine_nm(o_lat, o_lon, d_lat, d_lon)
-    detour = haversine_nm(o_lat, o_lon, ac_lat, ac_lon) + haversine_nm(ac_lat, ac_lon, d_lat, d_lon)
-    return detour <= od * 1.25 + 250
+    return d_from_origin + d_to_dest <= od * 1.25 + 250
 
 
 # ---------------------------------------------------------------- lookups
@@ -312,8 +329,13 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
         elev = math.degrees(math.atan2(alt / 6076.115, dst))
 
     squawk = ac.get("squawk")
-    is_emergency = (ac.get("emergency") not in (None, "none")
-                    or squawk in ("7500", "7600", "7700"))
+    # whitelist real distress states: readsb's enum also carries "lifeguard"
+    # (routine medevac priority) and "reserved" (junk). Grounded aircraft are
+    # excluded — ramp transponder tests often squawk 7x00 from parked planes.
+    is_emergency = (not on_ground
+                    and (ac.get("emergency") in ("general", "minfuel", "nordo",
+                                                 "unlawful", "downed")
+                         or squawk in ("7500", "7600", "7700")))
 
     # is the aircraft's track pointed roughly at the viewer?
     approaching = None
@@ -325,7 +347,10 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
         approaching = diff < 60
     plausible = True
     if route and lat is not None and lon is not None:
-        plausible = route_is_plausible(route, lat, lon)
+        plausible = route_is_plausible(
+            route, lat, lon,
+            alt_ft=None if on_ground or not isinstance(alt, (int, float)) else alt,
+            vert_rate=ac.get("baro_rate", ac.get("geom_rate")))
 
     # how far along the origin->destination route the aircraft is (0..1)
     progress = None

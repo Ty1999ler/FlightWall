@@ -61,11 +61,6 @@ h1 {
 
 .radar-wrap { position: relative; flex: none; line-height: 0; }
 #radar { width: 230px; height: 230px; }
-.map-credit {
-  position: absolute; bottom: 4px; right: 10px;
-  font-size: 9px; line-height: 1; color: #8b98b866;
-  pointer-events: none;
-}
 
 .header-right { text-align: right; }
 .clock { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: 2px; }
@@ -214,6 +209,16 @@ footer {
 }
 footer a { color: #6b7ba6; }
 
+/* ---------------- kiosk mode (?kiosk=1) ---------------- */
+body.kiosk footer,
+body.kiosk .gear { display: none; }
+body.kiosk { transition: transform 2s ease; }
+body.kiosk::after {
+  content: ""; position: fixed; inset: -4px; background: #000;
+  opacity: 0; pointer-events: none; transition: opacity 60s linear; z-index: 90;
+}
+body.kiosk.night::after { opacity: 0.55; }
+
 /* ---------------- modal ---------------- */
 .modal-backdrop {
   position: fixed; inset: 0; background: #000a;
@@ -223,6 +228,9 @@ footer a { color: #6b7ba6; }
 .modal {
   background: var(--card); border: 1px solid var(--card-edge);
   border-radius: 14px; padding: 22px 24px; width: min(480px, 92vw);
+  /* on small phones the one-column form is taller than the screen */
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
 }
 .modal h2 { font-size: 18px; margin-bottom: 16px; letter-spacing: 2px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -267,7 +275,8 @@ body.closest-mode .unverified-tag { font-size: 13px; }
 body.closest-mode .stats { margin-top: 20px; padding-top: 16px; gap: 12px; }
 body.closest-mode .stat .label { font-size: 12px; letter-spacing: 2px; }
 body.closest-mode .stat .value { font-size: 24px; margin-top: 4px; }
-body.closest-mode .overhead-badge { font-size: 12px; top: 14px; right: 14px; }
+body.closest-mode .overhead-badge,
+body.closest-mode .emergency-badge { font-size: 12px; top: 14px; right: 14px; }
 
 /* "next up" strip under the hero card */
 #next-up {
@@ -289,10 +298,25 @@ body.closest-mode .overhead-badge { font-size: 12px; top: 14px; right: 14px; }
 .n-dist { color: var(--dim); }
 body.closest-mode main { flex-direction: column; gap: 12px; }
 
+/* short desktop screens (laptops, 720p wall displays): keep the whole wall
+   above the fold by shrinking the radar and hero typography */
+@media (min-width: 641px) and (max-height: 820px) {
+  #radar { width: 150px; height: 150px; }
+  header { padding: 12px 24px 6px; }
+  body.closest-mode .card { padding: 20px 28px 16px; }
+  body.closest-mode .flightno { font-size: 42px; }
+  body.closest-mode .endpoint .code { font-size: 42px; }
+  body.closest-mode .photo { width: 180px; height: 114px; }
+  body.closest-mode .stat .value { font-size: 20px; }
+  body.closest-mode .route { margin: 16px 0 8px; }
+  #next-up { padding: 8px 16px 10px; }
+  .next-row { font-size: 12.5px; padding: 3px 0; }
+  footer { padding: 6px 16px 10px; }
+}
+
 /* ---------------- small screens (phones) ---------------- */
 @media (max-width: 900px) {
   #radar { width: 130px; height: 130px; }
-  .map-credit { font-size: 8px; bottom: 2px; right: 4px; }
   header { flex-wrap: wrap; gap: 14px; }
 }
 
@@ -315,7 +339,8 @@ body.closest-mode main { flex-direction: column; gap: 12px; }
   body.closest-mode .endpoint { min-width: 84px; }
   body.closest-mode .endpoint .city { font-size: 12.5px; }
   body.closest-mode .route { margin: 16px 0 8px; gap: 12px; }
-  body.closest-mode .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stats { grid-template-columns: repeat(2, 1fr); } /* all cards, both modes */
+  body.closest-mode .stats { gap: 10px; }
   body.closest-mode .stat .value { font-size: 19px; }
   body.closest-mode .no-route { font-size: 15px; }
 

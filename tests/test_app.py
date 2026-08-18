@@ -73,6 +73,40 @@ def test_route_plausibility_accepts_mid_route_aircraft():
     assert server.route_is_plausible(route, 39.0, -95.0) is True
 
 
+def test_route_plausibility_rejects_landing_short_of_claimed_destination():
+    # the TS915 case: adsbdb says FCO->YYZ, but the plane is descending
+    # through 1,325 ft beside YUL — Montreal is ON the Rome->Toronto great
+    # circle, so only the terminal-phase check can catch this
+    route = {"origin": {"latitude": 41.80, "longitude": 12.25, "iata_code": "FCO"},
+             "destination": {"latitude": 43.68, "longitude": -79.63, "iata_code": "YYZ"}}
+    assert server.route_is_plausible(route, 45.44, -73.75,
+                                     alt_ft=1325, vert_rate=-800) is False
+
+
+def test_route_plausibility_accepts_overflight_at_cruise():
+    # same route, same spot over Montreal, but at cruise altitude: genuinely
+    # en route to Toronto, so it must stay plausible
+    route = {"origin": {"latitude": 41.80, "longitude": 12.25, "iata_code": "FCO"},
+             "destination": {"latitude": 43.68, "longitude": -79.63, "iata_code": "YYZ"}}
+    assert server.route_is_plausible(route, 45.44, -73.75,
+                                     alt_ft=36000, vert_rate=0) is True
+
+
+def test_route_plausibility_rejects_takeoff_far_from_claimed_origin():
+    # climbing out at 3,000 ft but the claimed origin is hundreds of nm away
+    route = {"origin": {"latitude": 40.64, "longitude": -73.78, "iata_code": "JFK"},
+             "destination": {"latitude": 49.01, "longitude": 2.55, "iata_code": "CDG"}}
+    assert server.route_is_plausible(route, 45.44, -73.75,
+                                     alt_ft=3000, vert_rate=1500) is False
+
+
+def test_route_plausibility_accepts_final_approach_at_destination():
+    route = {"origin": {"latitude": 41.80, "longitude": 12.25, "iata_code": "FCO"},
+             "destination": {"latitude": 45.47, "longitude": -73.74, "iata_code": "YUL"}}
+    assert server.route_is_plausible(route, 45.44, -73.75,
+                                     alt_ft=1325, vert_rate=-800) is True
+
+
 def test_route_plausibility_rejects_same_airport():
     route = {"origin": {"latitude": 45.47, "longitude": -73.74, "iata_code": "YUL"},
              "destination": {"latitude": 45.47, "longitude": -73.74, "iata_code": "YUL"}}
@@ -207,6 +241,22 @@ def test_emergency_and_approaching(client, monkeypatch):
     a = client.post("/api/aircraft", json={}).json()["aircraft"][0]
     assert a["emergency"] is True and a["squawk"] == "7700"
     assert a["approaching"] is True
+
+
+def test_lifeguard_medevac_is_not_an_emergency(client, monkeypatch):
+    # "lifeguard" is routine medevac priority in readsb's enum, not distress
+    medevac = dict(RAW_JET, hex="ceda11", emergency="lifeguard", squawk="1200")
+    stub_feed(monkeypatch, [medevac])
+    a = client.post("/api/aircraft", json={}).json()["aircraft"][0]
+    assert a["emergency"] is False
+
+
+def test_grounded_ramp_test_is_not_an_emergency(client, monkeypatch):
+    # parked avionics tests routinely squawk 7x00; never alarm on the ground
+    parked = dict(RAW_JET, hex="badca7", squawk="7700", alt_baro="ground")
+    stub_feed(monkeypatch, [parked])
+    a = client.post("/api/aircraft", json={}).json()["aircraft"][0]
+    assert a["emergency"] is False and a["on_ground"] is True
 
 
 def test_normal_flight_not_emergency_or_approaching(client, monkeypatch):

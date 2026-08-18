@@ -103,6 +103,12 @@ above me right now" needs the tunnel:
 - **Look angle** — `atan(altitude ÷ ground distance)`; the OVERHEAD badge
   means 60°+ above the horizon, i.e. genuinely above your head.
 - Click any card to open that aircraft on the ADS-B Exchange globe.
+- **Radar trails** — each aircraft leaves a fading 4-minute tail on the map
+  scope, so approach paths sweep visibly across the area.
+- **Kiosk mode** — open `/?kiosk=1` on a dedicated wall display: hides the
+  footer and settings gear, hides the cursor when idle, keeps the screen
+  awake (HTTPS/localhost only), drifts the page a couple of pixels per
+  minute against burn-in, and dims the wall from 23:00 to 06:00.
 
 Coverage note: aircraft appear only if a community receiver hears them, and
 some military/blocked aircraft transmit little or no identity data.

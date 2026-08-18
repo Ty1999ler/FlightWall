@@ -219,16 +219,18 @@ function renderNextUp(list, closestOnly) {
       `<span class="n-route">${esc(route)}</span><span class="n-dist">${esc(dist)}</span></div>`;
   }).join("");
   setHTML(nextUp, `<div class="next-label">NEXT UP</div>${rows}`);
-  board.appendChild(nextUp);
+  if (board.lastElementChild !== nextUp) board.appendChild(nextUp);
 }
 
 function render(list) {
   latest = list; // radar keeps showing everything in range
+  updateTrails(list);
   const closestOnly = !config || config.display_mode !== "all";
   document.body.classList.toggle("closest-mode", closestOnly);
   const shown = closestOnly ? list.slice(0, 1) : list;
   const seen = new Set();
-  for (const a of shown) {
+  let anchor = null; // re-inserting an in-place node kills CSS transitions,
+  for (const a of shown) { // so only move cards whose order actually changed
     seen.add(a.hex);
     let card = cards.get(a.hex);
     if (!card) {
@@ -236,7 +238,9 @@ function render(list) {
       cards.set(a.hex, card);
     }
     updateCard(card, a);
-    board.appendChild(card.el); // appending in sorted order also reorders existing cards
+    const expected = anchor ? anchor.nextElementSibling : board.firstElementChild;
+    if (card.el !== expected) board.insertBefore(card.el, expected);
+    anchor = card.el;
   }
   for (const [hex, card] of cards) {
     if (!seen.has(hex)) { card.el.remove(); cards.delete(hex); }
@@ -362,6 +366,54 @@ function radarCenter() {
   return null;
 }
 
+/* Trails: the last few minutes of each aircraft's positions, drawn as a
+   fading tail so approach paths sweep visibly across the map. */
+const TRAIL_MS = 4 * 60 * 1000;
+const trails = new Map(); // hex -> [{lat, lon, t}]
+
+function updateTrails(list) {
+  const now = Date.now();
+  for (const a of list) {
+    if (a.lat == null || a.lon == null) continue;
+    let tr = trails.get(a.hex);
+    if (!tr) { tr = []; trails.set(a.hex, tr); }
+    const last = tr[tr.length - 1];
+    if (!last || last.lat !== a.lat || last.lon !== a.lon) {
+      tr.push({ lat: a.lat, lon: a.lon, t: now });
+    }
+    while (tr.length > 48 || (tr.length && now - tr[0].t > TRAIL_MS)) tr.shift();
+  }
+  for (const [hex, tr] of trails) { // forget aircraft that left the feed
+    if (!tr.length || now - tr[tr.length - 1].t > TRAIL_MS) trails.delete(hex);
+  }
+}
+
+function drawTrails(center, rangeNm, cx, cy, R) {
+  const now = Date.now();
+  const nmPerDegLon = 60 * Math.cos(center.lat * Math.PI / 180);
+  const closestHex = latest.length ? latest[0].hex : null;
+  rctx.save();
+  rctx.beginPath(); rctx.arc(cx, cy, R, 0, Math.PI * 2); rctx.clip();
+  rctx.lineWidth = 2.5;
+  rctx.lineCap = "round";
+  for (const [hex, tr] of trails) {
+    if (tr.length < 2) continue;
+    const rgb = hex === closestHex ? "255,200,87" : "90,209,255";
+    let prev = null;
+    for (const p of tr) {
+      const x = cx + ((p.lon - center.lon) * nmPerDegLon / rangeNm) * R;
+      const y = cy - ((p.lat - center.lat) * 60 / rangeNm) * R;
+      if (prev) {
+        const age = Math.min(1, (now - p.t) / TRAIL_MS);
+        rctx.strokeStyle = `rgba(${rgb},${(0.55 * (1 - age)).toFixed(3)})`;
+        rctx.beginPath(); rctx.moveTo(prev.x, prev.y); rctx.lineTo(x, y); rctx.stroke();
+      }
+      prev = { x, y };
+    }
+  }
+  rctx.restore();
+}
+
 function drawMap(center, rangeNm, w, cx, cy, R) {
   // meters per canvas pixel so the map scale matches the blip scale exactly
   const mpp = (rangeNm * 1852) / R;
@@ -396,7 +448,10 @@ function drawRadar() {
   rctx.clearRect(0, 0, w, w);
   const center = radarCenter();
   const rangeNm = Math.min(config ? config.radius_nm : 30, RADAR_RANGE_NM);
-  if (center) drawMap(center, rangeNm, w, cx, cy, R);
+  if (center) {
+    drawMap(center, rangeNm, w, cx, cy, R);
+    drawTrails(center, rangeNm, cx, cy, R);
+  }
 
   rctx.strokeStyle = "#1f2b4daa";
   rctx.lineWidth = 2;
@@ -537,6 +592,43 @@ document.getElementById("btn-uselocation").addEventListener("click", async () =>
   startPolling();
   openSettings(); // repopulate fields with detected values
 });
+
+/* ---------------- kiosk mode (?kiosk=1) ---------------- */
+
+if (new URLSearchParams(location.search).has("kiosk")) {
+  document.body.classList.add("kiosk");
+
+  // burn-in protection: drift the whole page a couple of px on a slow cycle
+  const drift = [[0, 0], [2, 1], [1, 2], [-1, 1], [-2, -1], [0, -2], [1, -1]];
+  let di = 0;
+  setInterval(() => {
+    di = (di + 1) % drift.length;
+    document.body.style.transform = `translate(${drift[di][0]}px, ${drift[di][1]}px)`;
+  }, 60000);
+
+  // hide the cursor after a few idle seconds
+  let cursorTimer = setTimeout(() => { document.body.style.cursor = "none"; }, 5000);
+  document.addEventListener("mousemove", () => {
+    document.body.style.cursor = "";
+    clearTimeout(cursorTimer);
+    cursorTimer = setTimeout(() => { document.body.style.cursor = "none"; }, 5000);
+  });
+
+  // keep the display awake where the browser allows it (needs HTTPS/localhost)
+  if ("wakeLock" in navigator) {
+    const wake = () => navigator.wakeLock.request("screen").catch(() => {});
+    wake();
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  }
+
+  // dim the wall overnight (23:00-06:00)
+  const night = () => {
+    const h = new Date().getHours();
+    document.body.classList.toggle("night", h >= 23 || h < 6);
+  };
+  night();
+  setInterval(night, 60000);
+}
 
 /* ---------------- boot ---------------- */
 

@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FlightWall</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tyler's FlightWall</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#9992;&#65039;</text></svg>">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="theme-color" content="#070b16">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
@@ -16,11 +18,14 @@
   <div class="brand">
     <span class="brand-icon">&#9992;</span>
     <div>
-      <h1>FLIGHTWALL</h1>
+      <h1>TYLER'S FLIGHTWALL</h1>
       <div class="tagline" id="location-line">locating&hellip;</div>
     </div>
   </div>
-  <canvas id="radar" width="300" height="300"></canvas>
+  <div class="radar-wrap">
+    <canvas id="radar" width="460" height="460"></canvas>
+    <div class="map-credit">&copy; OpenStreetMap &middot; &copy; CARTO</div>
+  </div>
   <div class="header-right">
     <div class="clock" id="clock">--:--:--</div>
     <div class="sub" id="date-line"></div>

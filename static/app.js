@@ -101,6 +101,7 @@ function buildCard(hex) {
   el.className = "card";
   el.innerHTML = `
     <span class="overhead-badge hidden">OVERHEAD</span>
+    <span class="emergency-badge hidden">EMERGENCY</span>
     <div class="card-top">
       <div>
         <div class="airline"></div>
@@ -124,7 +125,8 @@ function buildCard(hex) {
     </div>`;
   const q = s => el.querySelector(s);
   const refs = {
-    badge: q(".overhead-badge"), airline: q(".airline"), flightno: q(".flightno"),
+    badge: q(".overhead-badge"), emerg: q(".emergency-badge"),
+    airline: q(".airline"), flightno: q(".flightno"),
     meta: q(".plane-meta"), photo: q(".photo"), unverified: q(".unverified-tag"),
     route: q(".route"), jet: q(".jet"), noRoute: q(".no-route"),
     oCode: q(".endpoint:not(.dest) .code"), oCity: q(".endpoint:not(.dest) .city"),
@@ -176,10 +178,15 @@ function updateCard(card, a) {
   }
 
   if (a.track != null) refs.jet.style.transform = `rotate(${Math.round(a.track)}deg)`;
+  // place the jet at its real position along the route (clamped off the codes)
+  const pct = a.route_progress == null ? 50 : Math.min(90, Math.max(10, a.route_progress * 100));
+  refs.jet.style.left = `${pct}%`;
 
   setHTML(refs.alt, fmtAlt(a.alt_ft, a.on_ground) + trendArrow(a.vert_rate));
   setText(refs.spd, fmtSpeed(a.gs_kt));
-  setText(refs.dist, a.dst_nm == null ? "—" : `${fmtDist(a.dst_nm)} ${compass(a.dir_deg)}`);
+  const distText = a.dst_nm == null ? "—" : `${fmtDist(a.dst_nm)} ${compass(a.dir_deg)}`;
+  setHTML(refs.dist, a.approaching
+    ? `${esc(distText)} <span class="inbound">▾ inbound</span>` : esc(distText));
   setText(refs.look, a.on_ground ? "on ground"
     : a.elev_deg == null ? "—"
     : a.elev_deg < 1 ? "on horizon" : `${Math.round(a.elev_deg)}° up`);
@@ -189,7 +196,30 @@ function updateCard(card, a) {
     ? a.elev_deg >= 60
     : a.dst_nm != null && a.dst_nm < 2);
   el.classList.toggle("overhead", overhead);
-  refs.badge.classList.toggle("hidden", !overhead);
+  refs.badge.classList.toggle("hidden", !overhead || a.emergency);
+
+  el.classList.toggle("emergency", !!a.emergency);
+  refs.emerg.classList.toggle("hidden", !a.emergency);
+  if (a.emergency) setText(refs.emerg, `EMERGENCY ${a.squawk || ""}`.trim());
+}
+
+/* "Next up" strip under the hero card in closest mode. */
+const nextUp = document.createElement("div");
+nextUp.id = "next-up";
+
+function renderNextUp(list, closestOnly) {
+  if (!closestOnly || list.length < 2) { nextUp.remove(); return; }
+  const rows = list.slice(1, 4).map(a => {
+    const ident = a.flight_iata || a.callsign || a.registration || a.hex.toUpperCase();
+    const route = a.origin && a.destination
+      ? `${a.origin.iata || a.origin.icao || "?"} → ${a.destination.iata || a.destination.icao || "?"}`
+      : (a.airline || "");
+    const dist = a.dst_nm == null ? "" : `${fmtDist(a.dst_nm)} ${compass(a.dir_deg)}`;
+    return `<div class="next-row"><span class="n-id">${esc(ident)}</span>` +
+      `<span class="n-route">${esc(route)}</span><span class="n-dist">${esc(dist)}</span></div>`;
+  }).join("");
+  setHTML(nextUp, `<div class="next-label">NEXT UP</div>${rows}`);
+  board.appendChild(nextUp);
 }
 
 function render(list) {
@@ -211,6 +241,7 @@ function render(list) {
   for (const [hex, card] of cards) {
     if (!seen.has(hex)) { card.el.remove(); cards.delete(hex); }
   }
+  renderNextUp(list, closestOnly);
   emptyState.classList.toggle("hidden", list.length > 0);
   if (!list.length) {
     emptyState.innerHTML = `<div class="empty-icon">🌌</div>
@@ -299,22 +330,84 @@ function updateLocationLine() {
   setText(locationLine, `${name} · ${fmtDist(config.radius_nm)} radius`);
 }
 
-/* ---------------- radar ---------------- */
+/* ---------------- radar (map scope) ---------------- */
 
 const radar = document.getElementById("radar");
 const rctx = radar.getContext("2d");
 let sweep = 0;
 
+// The scope shows at most this range so the map stays usefully zoomed in;
+// aircraft further out (but inside the search radius) clamp to the rim.
+const RADAR_RANGE_NM = 20;
+
+const tileCache = new Map(); // "z/x/y" -> Image (dark CARTO basemap tiles)
+
+function tileFor(z, x, y) {
+  const key = `${z}/${x}/${y}`;
+  let img = tileCache.get(key);
+  if (!img) {
+    if (tileCache.size > 160) tileCache.clear();
+    img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onerror = () => tileCache.delete(key); // retry on a later frame
+    img.src = `https://${"abcd"[(x + y) % 4]}.basemaps.cartocdn.com/dark_all/${z}/${x}/${y}.png`;
+    tileCache.set(key, img);
+  }
+  return img;
+}
+
+function radarCenter() {
+  if (locSource === "device" && devicePos) return devicePos;
+  if (config && config.lat != null) return { lat: config.lat, lon: config.lon };
+  return null;
+}
+
+function drawMap(center, rangeNm, w, cx, cy, R) {
+  // meters per canvas pixel so the map scale matches the blip scale exactly
+  const mpp = (rangeNm * 1852) / R;
+  const latRad = center.lat * Math.PI / 180;
+  const z = Math.max(3, Math.min(17, Math.round(
+    Math.log2(156543.03392 * Math.cos(latRad) / mpp))));
+  const scale = (156543.03392 * Math.cos(latRad) / Math.pow(2, z)) / mpp;
+  const n = Math.pow(2, z);
+  const wx = (center.lon + 180) / 360 * 256 * n;
+  const wy = (0.5 - Math.log(Math.tan(Math.PI / 4 + latRad / 2)) / (2 * Math.PI)) * 256 * n;
+  rctx.save();
+  rctx.beginPath(); rctx.arc(cx, cy, R, 0, Math.PI * 2); rctx.clip();
+  const tx0 = Math.floor((wx - cx / scale) / 256), tx1 = Math.floor((wx + cx / scale) / 256);
+  const ty0 = Math.floor((wy - cy / scale) / 256), ty1 = Math.floor((wy + cy / scale) / 256);
+  for (let tx = tx0; tx <= tx1; tx++) {
+    for (let ty = Math.max(0, ty0); ty <= Math.min(n - 1, ty1); ty++) {
+      const img = tileFor(z, ((tx % n) + n) % n, ty);
+      if (img.complete && img.naturalWidth) {
+        rctx.drawImage(img,
+          cx + (tx * 256 - wx) * scale, cy + (ty * 256 - wy) * scale,
+          256 * scale + 0.5, 256 * scale + 0.5);
+      }
+    }
+  }
+  rctx.fillStyle = "rgba(7, 11, 22, 0.38)"; // dim so blips stay readable
+  rctx.fillRect(0, 0, w, w);
+  rctx.restore();
+}
+
 function drawRadar() {
   const w = radar.width, cx = w / 2, cy = w / 2, R = w / 2 - 8;
   rctx.clearRect(0, 0, w, w);
-  rctx.strokeStyle = "#1f2b4d";
+  const center = radarCenter();
+  const rangeNm = Math.min(config ? config.radius_nm : 30, RADAR_RANGE_NM);
+  if (center) drawMap(center, rangeNm, w, cx, cy, R);
+
+  rctx.strokeStyle = "#1f2b4daa";
   rctx.lineWidth = 2;
-  for (const f of [1 / 3, 2 / 3, 1]) {
+  for (const f of [0.5, 1]) {
     rctx.beginPath(); rctx.arc(cx, cy, R * f, 0, Math.PI * 2); rctx.stroke();
   }
-  rctx.beginPath(); rctx.moveTo(cx - R, cy); rctx.lineTo(cx + R, cy);
-  rctx.moveTo(cx, cy - R); rctx.lineTo(cx, cy + R); rctx.stroke();
+  rctx.fillStyle = "#8b98b8aa";
+  rctx.font = "20px Consolas, monospace";
+  rctx.textAlign = "center";
+  rctx.fillText("N", cx, cy - R + 24);
+  rctx.fillText(`${rangeNm} nm`, cx, cy + R - 12);
 
   // sweep
   sweep = (sweep + 0.02) % (Math.PI * 2);
@@ -331,17 +424,16 @@ function drawRadar() {
 
   // home dot
   rctx.fillStyle = "#ffc857";
-  rctx.beginPath(); rctx.arc(cx, cy, 4, 0, Math.PI * 2); rctx.fill();
+  rctx.beginPath(); rctx.arc(cx, cy, 5, 0, Math.PI * 2); rctx.fill();
 
-  // blips
-  const radius = config ? config.radius_nm : 30;
+  // blips (same scale as the map, so they sit over the real streets below)
   latest.forEach((a, i) => {
     if (a.dst_nm == null || a.dir_deg == null) return;
-    const r = Math.min(a.dst_nm / radius, 1) * R;
+    const r = Math.min(a.dst_nm / rangeNm, 1) * R;
     const ang = (a.dir_deg - 90) * Math.PI / 180;
     const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r;
     rctx.fillStyle = i === 0 ? "#ffc857" : "#5ad1ff";
-    rctx.beginPath(); rctx.arc(x, y, i === 0 ? 5 : 3.5, 0, Math.PI * 2); rctx.fill();
+    rctx.beginPath(); rctx.arc(x, y, i === 0 ? 6 : 4, 0, Math.PI * 2); rctx.fill();
   });
 
   requestAnimationFrame(drawRadar);

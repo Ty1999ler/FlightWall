@@ -199,6 +199,44 @@ def test_ground_aircraft_has_no_altitude_or_elevation(client, monkeypatch):
     assert a["on_ground"] is True and a["alt_ft"] is None and a["elev_deg"] is None
 
 
+def test_emergency_and_approaching(client, monkeypatch):
+    # squawk 7700 and a track pointing straight at the viewer (dir 300 -> the
+    # bearing back to the viewer is 120)
+    inbound = dict(RAW_JET, hex="c0ffee", squawk="7700", track=120.0)
+    stub_feed(monkeypatch, [inbound])
+    a = client.post("/api/aircraft", json={}).json()["aircraft"][0]
+    assert a["emergency"] is True and a["squawk"] == "7700"
+    assert a["approaching"] is True
+
+
+def test_normal_flight_not_emergency_or_approaching(client, monkeypatch):
+    stub_feed(monkeypatch, [RAW_JET])  # track 250 vs bearing-to-viewer 120
+    a = client.post("/api/aircraft", json={}).json()["aircraft"][0]
+    assert a["emergency"] is False
+    assert a["approaching"] is False
+    assert a["route_progress"] is None  # no route known
+
+
+def test_route_progress_near_origin(client, monkeypatch):
+    async def fake_fetch(lat, lon, radius_nm):
+        return [RAW_JET]  # aircraft at 45.5,-73.9 — right beside YUL
+
+    async def fake_route(callsign):
+        return {"flight_iata": None, "airline": "Air Canada", "airline_iata": "AC",
+                "origin": {"latitude": 45.47, "longitude": -73.74, "iata_code": "YUL"},
+                "destination": {"latitude": 43.68, "longitude": -79.63, "iata_code": "YYZ"}}
+
+    async def fake_aircraft(hex_code):
+        return None
+
+    monkeypatch.setattr(server, "fetch_point", fake_fetch)
+    monkeypatch.setattr(server, "lookup_route", fake_route)
+    monkeypatch.setattr(server, "lookup_aircraft", fake_aircraft)
+    a = client.post("/api/aircraft", json={}).json()["aircraft"][0]
+    assert a["route_plausible"] is True
+    assert a["route_progress"] is not None and 0 < a["route_progress"] < 0.15
+
+
 def test_not_configured(client, monkeypatch):
     server.state["config"]["lat"] = None
     server.state["config"]["lon"] = None

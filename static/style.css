@@ -27,6 +27,9 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  -webkit-text-size-adjust: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 /* ---------------- header ---------------- */
@@ -47,7 +50,7 @@ header {
 }
 h1 {
   font-size: 26px;
-  letter-spacing: 8px;
+  letter-spacing: 5px;
   font-weight: 700;
   background: linear-gradient(90deg, var(--text), var(--accent));
   -webkit-background-clip: text;
@@ -56,7 +59,13 @@ h1 {
 }
 .tagline { color: var(--dim); font-size: 13px; margin-top: 2px; }
 
-#radar { width: 150px; height: 150px; flex: none; }
+.radar-wrap { position: relative; flex: none; line-height: 0; }
+#radar { width: 230px; height: 230px; }
+.map-credit {
+  position: absolute; bottom: 4px; right: 10px;
+  font-size: 9px; line-height: 1; color: #8b98b866;
+  pointer-events: none;
+}
 
 .header-right { text-align: right; }
 .clock { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: 2px; }
@@ -94,7 +103,7 @@ main {
   flex: 1;
   padding: 8px 28px 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
   gap: 14px;
   align-content: start;
 }
@@ -151,6 +160,17 @@ main {
 }
 @keyframes pulse { 50% { opacity: 0.55; } }
 
+.emergency-badge {
+  position: absolute; top: 10px; right: 10px;
+  font-size: 10px; letter-spacing: 2px; font-weight: 700;
+  color: #fff; background: var(--bad);
+  padding: 3px 8px; border-radius: 4px;
+  animation: pulse 0.9s infinite;
+}
+.card.emergency { border-color: var(--bad); box-shadow: 0 0 26px #ff7b7244; }
+
+.inbound { color: var(--good); font-size: 11px; letter-spacing: 1px; }
+
 /* route row */
 .route { display: flex; align-items: center; gap: 14px; margin: 12px 0 4px; }
 .endpoint { min-width: 74px; }
@@ -162,10 +182,11 @@ main {
   background: repeating-linear-gradient(90deg, var(--card-edge) 0 8px, transparent 8px 14px);
 }
 .route-line .jet {
-  position: absolute; top: 50%; left: 50%;
+  position: absolute; top: 50%; left: 50%; /* left is set per-aircraft in JS */
   translate: -50% -50%;
   font-size: 15px; color: var(--text);
   display: inline-block;
+  transition: left 1.2s ease;
 }
 .route.unverified .code { color: var(--dim); }
 .unverified-tag { color: var(--accent2); font-size: 10.5px; letter-spacing: 1px; margin: 0 0 2px; }
@@ -248,7 +269,56 @@ body.closest-mode .stat .label { font-size: 12px; letter-spacing: 2px; }
 body.closest-mode .stat .value { font-size: 24px; margin-top: 4px; }
 body.closest-mode .overhead-badge { font-size: 12px; top: 14px; right: 14px; }
 
+/* "next up" strip under the hero card */
+#next-up {
+  width: min(780px, 94vw);
+  margin: 0 auto;
+  padding: 10px 18px 12px;
+  background: #0d152699;
+  border: 1px solid var(--card-edge);
+  border-radius: 14px;
+}
+.next-label { color: var(--faint); font-size: 10px; letter-spacing: 2.5px; margin-bottom: 6px; }
+.next-row {
+  display: flex; gap: 14px; align-items: baseline;
+  font-family: var(--mono); font-size: 13.5px;
+  padding: 4px 0;
+}
+.n-id { color: var(--text); min-width: 90px; }
+.n-route { color: var(--dim); flex: 1; }
+.n-dist { color: var(--dim); }
+body.closest-mode main { flex-direction: column; gap: 12px; }
+
+/* ---------------- small screens (phones) ---------------- */
 @media (max-width: 900px) {
-  #radar { display: none; }
-  header { flex-wrap: wrap; }
+  #radar { width: 130px; height: 130px; }
+  .map-credit { font-size: 8px; bottom: 2px; right: 4px; }
+  header { flex-wrap: wrap; gap: 14px; }
+}
+
+@media (max-width: 640px) {
+  header { padding: 12px 14px 6px; }
+  .brand-icon { font-size: 26px; }
+  h1 { font-size: 20px; letter-spacing: 5px; }
+  .tagline { font-size: 11.5px; }
+  .clock { font-size: 20px; }
+  .header-right { margin-left: auto; }
+  main { padding: 6px 12px 18px; gap: 10px; }
+  .status-banner { margin: 0 12px 6px; }
+
+  body.closest-mode .card { padding: 18px 18px 14px; }
+  body.closest-mode .flightno { font-size: 34px; }
+  body.closest-mode .flightno .cs { font-size: 14px; }
+  body.closest-mode .airline { font-size: 13px; }
+  body.closest-mode .photo { width: 138px; height: 88px; }
+  body.closest-mode .endpoint .code { font-size: 34px; }
+  body.closest-mode .endpoint { min-width: 84px; }
+  body.closest-mode .endpoint .city { font-size: 12.5px; }
+  body.closest-mode .route { margin: 16px 0 8px; gap: 12px; }
+  body.closest-mode .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  body.closest-mode .stat .value { font-size: 19px; }
+  body.closest-mode .no-route { font-size: 15px; }
+
+  .form-grid { grid-template-columns: 1fr; }
+  footer { font-size: 10.5px; padding-bottom: 12px; }
 }

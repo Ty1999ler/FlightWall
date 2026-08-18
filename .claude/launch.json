@@ -5,7 +5,8 @@
       "name": "flightwall",
       "runtimeExecutable": "py",
       "runtimeArgs": ["server.py"],
-      "port": 8484
+      "port": 8484,
+      "autoPort": true
     }
   ]
 }

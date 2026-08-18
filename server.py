@@ -310,9 +310,34 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
     elev = None
     if not on_ground and isinstance(alt, (int, float)) and dst is not None:
         elev = math.degrees(math.atan2(alt / 6076.115, dst))
+
+    squawk = ac.get("squawk")
+    is_emergency = (ac.get("emergency") not in (None, "none")
+                    or squawk in ("7500", "7600", "7700"))
+
+    # is the aircraft's track pointed roughly at the viewer?
+    approaching = None
+    track = ac.get("track")
+    if not on_ground and track is not None and direction is not None \
+            and (ac.get("gs") or 0) > 40:
+        to_viewer = (direction + 180) % 360
+        diff = abs((track - to_viewer + 180) % 360 - 180)
+        approaching = diff < 60
     plausible = True
     if route and lat is not None and lon is not None:
         plausible = route_is_plausible(route, lat, lon)
+
+    # how far along the origin->destination route the aircraft is (0..1)
+    progress = None
+    if route and plausible and lat is not None and lon is not None:
+        o, d = route.get("origin") or {}, route.get("destination") or {}
+        try:
+            d_from = haversine_nm(float(o["latitude"]), float(o["longitude"]), lat, lon)
+            d_to = haversine_nm(lat, lon, float(d["latitude"]), float(d["longitude"]))
+            if d_from + d_to > 0:
+                progress = round(d_from / (d_from + d_to), 3)
+        except (KeyError, TypeError, ValueError):
+            pass
 
     registration = ac.get("r") or (info or {}).get("registration")
     is_ga = bool(callsign and registration and callsign == registration.replace("-", ""))
@@ -329,6 +354,10 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
         "origin": _airport((route or {}).get("origin")),
         "destination": _airport((route or {}).get("destination")),
         "route_plausible": plausible,
+        "route_progress": progress,
+        "approaching": approaching,
+        "squawk": squawk,
+        "emergency": is_emergency,
         "is_ga": is_ga,
         "registration": registration,
         "type_code": ac.get("t"),
@@ -485,4 +514,6 @@ app.mount("/", StaticFiles(directory=BASE_DIR / "static", html=True), name="stat
 if __name__ == "__main__":
     uvicorn.run(app,
                 host=os.environ.get("FLIGHTWALL_HOST", "127.0.0.1"),
-                port=int(os.environ.get("FLIGHTWALL_PORT", "8484")))
+                port=int(os.environ.get("FLIGHTWALL_PORT")
+                         or os.environ.get("PORT")  # dev harness auto-port
+                         or 8484))

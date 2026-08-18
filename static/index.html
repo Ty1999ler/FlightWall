@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlightWall</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#9992;&#65039;</text></svg>">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#070b16">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="brand-icon">&#9992;</span>
+    <div>
+      <h1>FLIGHTWALL</h1>
+      <div class="tagline" id="location-line">locating&hellip;</div>
+    </div>
+  </div>
+  <canvas id="radar" width="300" height="300"></canvas>
+  <div class="header-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="sub" id="date-line"></div>
+    <div class="count-row">
+      <span class="count-badge" id="count-badge">0 aircraft</span>
+      <button class="gear" id="gear-btn" title="Settings">&#9881;</button>
+    </div>
+  </div>
+</header>
+
+<div id="status-banner" class="status-banner hidden"></div>
+
+<main id="board">
+  <div class="empty-state" id="empty-state">
+    <div class="empty-icon">&#128269;</div>
+    <div>Scanning the skies&hellip;</div>
+  </div>
+</main>
+
+<footer>
+  Live ADS-B data from <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>
+  &middot; routes &amp; aircraft info from <a href="https://adsbdb.com" target="_blank" rel="noopener">adsbdb.com</a>
+  &middot; photos via airport-data.com
+  &middot; click a card to track on the ADS-B Exchange globe
+</footer>
+
+<div class="modal-backdrop hidden" id="settings-modal">
+  <div class="modal">
+    <h2>Settings</h2>
+    <div class="form-grid">
+      <label>Latitude <input type="number" step="0.0001" id="set-lat"></label>
+      <label>Longitude <input type="number" step="0.0001" id="set-lon"></label>
+      <label>Location name <input type="text" id="set-name" placeholder="e.g. Home"></label>
+      <label>Radius (nautical miles) <input type="number" min="1" max="250" id="set-radius"></label>
+      <label>Refresh (seconds) <input type="number" min="3" max="120" id="set-refresh"></label>
+      <label>Units
+        <select id="set-units">
+          <option value="imperial">Imperial (mi, ft, kt)</option>
+          <option value="metric">Metric (km, m, km/h)</option>
+        </select>
+      </label>
+      <label>Display
+        <select id="set-display">
+          <option value="closest">Closest aircraft only</option>
+          <option value="all">All aircraft in range</option>
+        </select>
+      </label>
+      <label>Location source (this device)
+        <select id="set-locsource">
+          <option value="home">Home — saved location</option>
+          <option value="device">This device — GPS</option>
+        </select>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button id="btn-uselocation" class="secondary">Detect via IP</button>
+      <span class="spacer"></span>
+      <button id="btn-cancel" class="secondary">Cancel</button>
+      <button id="btn-save" class="primary">Save</button>
+    </div>
+    <div class="modal-error hidden" id="modal-error"></div>
+  </div>
+</div>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>

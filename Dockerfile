@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server.py .
 COPY static ./static
 
-RUN useradd --create-home appuser \
+# uid pinned to 1000: the NAS bind mount for /data must be chown'd to match
+RUN useradd --uid 1000 --create-home appuser \
     && mkdir /data && chown appuser /data
 USER appuser
 

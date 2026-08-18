@@ -35,7 +35,16 @@ function startDeviceLocation() {
       geoError = null;
       updateLocationLine();
     },
-    e => { geoError = e.message || "location permission denied"; updateLocationLine(); },
+    e => {
+      geoError = e.message || "location permission denied";
+      if (e.code === e.PERMISSION_DENIED && geoWatchId != null) {
+        // a denied watch is dead forever; clear it so the next poll can
+        // re-prompt (dismissed) or pick up a re-grant from site settings
+        navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = null;
+      }
+      updateLocationLine();
+    },
     { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 }
   );
 }
@@ -226,13 +235,13 @@ async function poll() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      redirect: "manual",
     });
-    const data = await r.json();
-    if (usingDevice && !devicePos && geoError) {
-      showBanner(`Device location unavailable (${geoError}) — showing home instead.`);
-      render(data.aircraft || []);
+    if (r.type === "opaqueredirect") { // Cloudflare Access session expired
+      showBanner("Sign-in expired — reload this page to sign in again.");
       return;
     }
+    const data = await r.json();
     if (data.error === "not configured") {
       showBanner("Set your location to start tracking — open ⚙ settings.");
       if (!poll.autoOpened) { poll.autoOpened = true; openSettings(); }
@@ -240,6 +249,11 @@ async function poll() {
     }
     if (data.error) {
       showBanner(`Live feed problem: ${data.error} — showing last known data.`);
+      return;
+    }
+    if (usingDevice && !devicePos && geoError) {
+      showBanner(`Device location unavailable (${geoError}) — showing home instead.`);
+      render(data.aircraft || []);
       return;
     }
     hideBanner();
@@ -373,13 +387,19 @@ document.getElementById("btn-save").addEventListener("click", async () => {
     units: document.getElementById("set-units").value,
     display_mode: document.getElementById("set-display").value,
   };
-  if (Number.isNaN(body.lat) || Number.isNaN(body.lon)) {
+  // blank fields mean "keep the current value" (NaN would reach the server
+  // as null and fail the whole save); both-blank lat/lon is allowed so GPS
+  // mode can be enabled even when no home location was ever saved
+  const latRaw = document.getElementById("set-lat").value.trim();
+  const lonRaw = document.getElementById("set-lon").value.trim();
+  if (latRaw === "" && lonRaw === "") {
+    delete body.lat;
+    delete body.lon;
+  } else if (Number.isNaN(body.lat) || Number.isNaN(body.lon)) {
     modalError.textContent = "Latitude and longitude are required.";
     modalError.classList.remove("hidden");
     return;
   }
-  // blank numeric fields mean "keep the current value" (NaN would reach the
-  // server as null and fail the whole save)
   if (!Number.isFinite(body.radius_nm)) delete body.radius_nm;
   if (!Number.isFinite(body.refresh_seconds)) delete body.refresh_seconds;
   const r = await fetch("/api/config", {
@@ -392,6 +412,10 @@ document.getElementById("btn-save").addEventListener("click", async () => {
     return;
   }
   config = await r.json();
+  if (config.persisted === false) {
+    showBanner("Settings applied, but the server could not write config.json — "
+      + "they will reset on restart. Check that the data folder is writable.");
+  }
   const newSource = document.getElementById("set-locsource").value;
   if (newSource !== locSource) {
     locSource = newSource;
@@ -412,6 +436,10 @@ document.getElementById("btn-uselocation").addEventListener("click", async () =>
     return;
   }
   config = await r.json();
+  if (config.persisted === false) {
+    showBanner("Settings applied, but the server could not write config.json — "
+      + "they will reset on restart. Check that the data folder is writable.");
+  }
   // the server already saved the detected location, so reflect it everywhere
   updateLocationLine();
   startPolling();

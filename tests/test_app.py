@@ -121,9 +121,17 @@ def test_set_config_is_atomic_on_invalid_input(client):
 def test_set_config_saves_and_round_trips(client):
     r = client.post("/api/config", json={"radius_nm": 45, "units": "metric"})
     assert r.status_code == 200
-    assert r.json()["radius_nm"] == 45
+    assert r.json()["radius_nm"] == 45 and r.json()["persisted"] is True
     saved = json.loads(server.CONFIG_PATH.read_text(encoding="utf-8"))
     assert saved["radius_nm"] == 45 and saved["units"] == "metric"
+
+
+def test_set_config_reports_persist_failure(client, monkeypatch):
+    # e.g. the NAS bind mount is not writable by the container user
+    monkeypatch.setattr(server, "save_config", lambda cfg: False)
+    r = client.post("/api/config", json={"radius_nm": 40})
+    assert r.status_code == 200          # settings still apply in memory
+    assert r.json()["persisted"] is False  # but the UI must warn
 
 
 def test_healthz(client):

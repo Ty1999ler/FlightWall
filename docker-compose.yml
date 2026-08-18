@@ -18,6 +18,10 @@ services:
     ports:
       - "8484:8000"   # http://NAS-IP:8484 on the LAN
     volumes:
+      # Create this dir BEFORE first start and chown it to the container user,
+      # or saved settings silently reset on every update:
+      #   sudo mkdir -p /volume1/docker/flightwall/data
+      #   sudo chown 1000 /volume1/docker/flightwall/data
       - /volume1/docker/flightwall/data:/data
     restart: unless-stopped
     labels:

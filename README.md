@@ -45,9 +45,16 @@ One-time setup:
 
 1. **GitHub**: create a private repo, push this project. The included
    `.github/workflows/build.yml` handles test + build + publish.
-2. **NAS folder**: create `/volume1/docker/flightwall/` and copy in
-   `docker-compose.yml` (edit `GITHUB_USER/REPO` to the real image path,
-   lowercase) and `.env` (from `.env.example`, with the tunnel token).
+2. **NAS folder**: over SSH, create the folders **and make the data dir
+   writable by the container user (uid 1000)** — without the chown, saved
+   settings silently reset on every update:
+   ```
+   sudo mkdir -p /volume1/docker/flightwall/data
+   sudo chown 1000 /volume1/docker/flightwall/data
+   ```
+   Then copy in `docker-compose.yml` (edit `GITHUB_USER/REPO` to the real
+   image path, lowercase) and `.env` (from `.env.example`, with the tunnel
+   token).
 3. **Pull access**: the NAS `docker login ghcr.io` from the family-hub setup
    already covers pulling this private image.
 4. **Start it**: from that folder, `sudo docker-compose up -d`.
@@ -72,9 +79,11 @@ above me right now" needs the tunnel:
    hostname, with an Allow policy listing family email addresses
    (one-time PIN login). This keeps the wall private — without it, the URL
    would be public and the app has no login of its own.
-4. On phones: open `https://flightwall.<your-domain>`, pass the email PIN
-   once, add to home screen (it installs as an app), then in ⚙ settings set
-   Location source to *This device — GPS*.
+4. On phones: open `https://flightwall.<your-domain>`, sign in with the email
+   PIN (Cloudflare re-prompts when the session expires — set the Access app's
+   session duration to its maximum, e.g. 1 month, to keep this rare; the wall
+   shows "Sign-in expired" when it happens), add to home screen (it installs
+   as an app), then in ⚙ settings set Location source to *This device — GPS*.
 
 ## How it works
 

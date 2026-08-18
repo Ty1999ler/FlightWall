@@ -97,15 +97,17 @@ def load_config() -> dict:
     return cfg
 
 
-def save_config(cfg: dict) -> None:
+def save_config(cfg: dict) -> bool:
     # atomic write; a locked/read-only file must not kill startup or a request
     try:
         tmp = CONFIG_PATH.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
         os.replace(tmp, CONFIG_PATH)
+        return True
     except OSError as exc:
-        print(f"Warning: could not write config.json ({exc}); "
+        print(f"Warning: could not write {CONFIG_PATH} ({exc}); "
               f"settings stay in effect until the server stops.")
+        return False
 
 
 state: dict = {
@@ -354,6 +356,10 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
 async def lifespan(app: FastAPI):
     state["client"] = httpx.AsyncClient(
         headers={"User-Agent": "FlightWall-local/1.0 (personal hobby display)"})
+    if not os.access(CONFIG_PATH.parent, os.W_OK):
+        print(f"WARNING: {CONFIG_PATH.parent} is not writable — settings will "
+              f"not survive restarts. On the NAS run: "
+              f"sudo chown 1000 /volume1/docker/flightwall/data")
     cfg = state["config"]
     if cfg["lat"] is None or cfg["lon"] is None:
         found = await geolocate(state["client"])
@@ -414,9 +420,10 @@ async def set_config(request: Request):
     except (TypeError, ValueError):
         return JSONResponse({"error": "invalid values"}, status_code=400)
     cfg.update(updates)
-    save_config(cfg)
+    persisted = save_config(cfg)
     state["point_cache"] = {}
-    return {**cfg, "configured": cfg["lat"] is not None and cfg["lon"] is not None}
+    return {**cfg, "configured": cfg["lat"] is not None and cfg["lon"] is not None,
+            "persisted": persisted}
 
 
 @app.post("/api/locate")
@@ -426,9 +433,9 @@ async def locate():
         return JSONResponse({"error": "IP geolocation failed"}, status_code=502)
     cfg = state["config"]
     cfg.update(found)
-    save_config(cfg)
+    persisted = save_config(cfg)
     state["point_cache"] = {}
-    return {**cfg, "configured": True}
+    return {**cfg, "configured": True, "persisted": persisted}
 
 
 @app.get("/healthz")

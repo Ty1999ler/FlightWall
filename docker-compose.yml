@@ -26,9 +26,13 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
+  # Optional: only needed if no cloudflared tunnel runs on the NAS already.
+  # A plain `docker-compose up -d` skips this service; start it with
+  # `docker-compose --profile tunnel up -d` (requires TUNNEL_TOKEN in .env).
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: flightwall-cloudflared
+    profiles: ["tunnel"]
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}

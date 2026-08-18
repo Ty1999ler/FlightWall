@@ -158,6 +158,7 @@ function updateCard(card, a) {
       refs.photo.src = a.photo_thumb;
       refs.photo.classList.remove("hidden");
     }
+    refs.photo.title = a.photo_credit ? `© ${a.photo_credit} · planespotters.net` : "";
   } else {
     refs.photo.classList.add("hidden");
   }

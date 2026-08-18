@@ -96,7 +96,11 @@ above me right now" needs the tunnel:
 - **Live positions** — [adsb.lol](https://adsb.lol) `v2/point` API: community
   ADS-B receivers, aircraft within the radius, no key required.
 - **Routes & airlines** — [adsbdb.com](https://adsbdb.com): callsign → airline
-  and route; hex → aircraft type, registration, photo. Cached in memory.
+  and route; hex → aircraft type and registration. Cached in memory.
+- **Photos** — [planespotters.net](https://www.planespotters.net) by hex code
+  (unique per airframe; hover a photo for the photographer credit), falling
+  back to airport-data.com. Registration-keyed photo archives can show a
+  previous holder of a recycled registration, which is why hex comes first.
 - **Route sanity check** — adsbdb routes are keyed by callsign and can be
   stale; if the plane isn't plausibly near the origin→destination great-circle
   path the card shows **⚠ ROUTE UNVERIFIED**.

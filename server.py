@@ -39,6 +39,7 @@ DEFAULT_CONFIG = {
 ADSB_POINT_URL = "https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
 ADSBDB_CALLSIGN_URL = "https://api.adsbdb.com/v0/callsign/{callsign}"
 ADSBDB_AIRCRAFT_URL = "https://api.adsbdb.com/v0/aircraft/{hex}"
+PLANESPOTTERS_URL = "https://api.planespotters.net/pub/photos/hex/{hex}"
 IP_GEO_URL = "http://ip-api.com/json/"
 
 POINT_CACHE_SECONDS = 4       # dedupe rapid refreshes against adsb.lol
@@ -263,6 +264,24 @@ async def lookup_aircraft(hex_code: str) -> dict | None:
         except (httpx.HTTPError, ValueError):
             state["adsbdb_down_until"] = loop.time() + 60
             return None  # not cached; the backoff prevents hammering
+        # prefer planespotters photos: they key on the hex (unique per
+        # airframe), while airport-data keys on the registration — which
+        # Canada recycles, so a reused reg can show the previous aircraft
+        try:
+            r = await state["client"].get(
+                PLANESPOTTERS_URL.format(hex=hex_code), timeout=5)
+            if r.status_code == 200:
+                photos = r.json().get("photos") or []
+                if photos:
+                    p = photos[0]
+                    thumb = (p.get("thumbnail_large") or p.get("thumbnail") or {})
+                    if thumb.get("src"):
+                        info = info or {}
+                        info["photo_thumb"] = thumb["src"]
+                        info["photo"] = p.get("link") or info.get("photo")
+                        info["photo_credit"] = p.get("photographer")
+        except (httpx.HTTPError, ValueError):
+            pass  # keep the adsbdb/airport-data photo fallback
     state["aircraft_cache"][hex_code] = info
     return info
 
@@ -390,6 +409,7 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
         "manufacturer": (info or {}).get("manufacturer"),
         "photo_thumb": (info or {}).get("photo_thumb"),
         "photo": (info or {}).get("photo"),
+        "photo_credit": (info or {}).get("photo_credit"),
         "lat": lat,
         "lon": lon,
         "alt_ft": None if on_ground or alt is None else alt,
@@ -408,8 +428,10 @@ async def enrich(ac: dict, home_lat: float, home_lon: float) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # descriptive UA: planespotters.net rejects generic library user agents
     state["client"] = httpx.AsyncClient(
-        headers={"User-Agent": "FlightWall-local/1.0 (personal hobby display)"})
+        headers={"User-Agent":
+                 "TylersFlightWall/1.0 (+https://github.com/Ty1999ler/FlightWall; personal hobby display)"})
     if not os.access(CONFIG_PATH.parent, os.W_OK):
         print(f"WARNING: {CONFIG_PATH.parent} is not writable — settings will "
               f"not survive restarts. On the NAS run: "
